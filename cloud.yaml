@@ -1,0 +1,259 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Creates an S3 bucket, Cognito User Pool, Lambda functions, DynamoDB tables, and API Gateway
+
+Resources:
+
+ 
+
+  # Cognito User Pool
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: b00979170-vyansi
+      AutoVerifiedAttributes:
+        - email 
+      UsernameAttributes:
+        - email
+      EmailVerificationMessage: 'Please verify your email address for my-app: {####}'
+      EmailVerificationSubject: 'Verify your email for my-app'
+
+  CognitoUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: job
+      UserPoolId: !Ref CognitoUserPool
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: job-client
+      UserPoolId: !Ref CognitoUserPool  
+
+  # Lambda Function
+  AddUserFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: UserFunction
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      Role: arn:aws:iam::067699391637:role/LabRole
+      Code:
+        S3Bucket: b00979170
+        S3Key: UserFunction.zip
+      Timeout: 30
+      MemorySize: 256
+
+  # DynamoDB Table
+  UserTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: User_Details
+      AttributeDefinitions:   
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: email
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # API Gateway
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: Recipe11
+      Description: API Gateway for my application
+      FailOnWarnings: true
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  ApiGatewayAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: CognitoAuthorizer
+      RestApiId: !Ref ApiGateway
+      Type: COGNITO_USER_POOLS
+      IdentitySource: method.request.header.Authorization
+      ProviderARNs:
+        - !GetAtt CognitoUserPool.Arn
+
+  ApiGatewayuserResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: "createuser"
+      RestApiId: !Ref ApiGateway
+
+  ApiGatewaycreateCors:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      HttpMethod: OPTIONS
+      ResourceId: !Ref ApiGatewayuserResource
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ""
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+          ResponseModels:
+            application/json: "Empty"
+
+  LambdaPermissionAddUser:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt AddUserFunction.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*
+
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: 
+      - ApiGatewaycreateCors
+    Properties:
+      RestApiId: !Ref ApiGateway
+
+  ApiGatewayStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref ApiGateway
+      StageName: prod
+      DeploymentId: !Ref ApiGatewayDeployment
+
+  # EC2 Key Pair
+  recipeKeyPair:
+    Type: AWS::EC2::KeyPair
+    Properties:
+      KeyName: frontend-recipe-keypair
+
+  # Frontend EC2 Instance
+  FrontEndEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0453ec754f44f9a4a
+      InstanceType: t2.micro
+      KeyName: !Ref recipeKeyPair
+      SecurityGroupIds:
+        - !Ref frontendSecurityGroup
+      Tags:
+        - Key: Name
+          Value: frontend
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo yum update -y
+          sudo yum install -y docker
+          sudo systemctl start docker
+          sudo systemctl enable docker
+          sudo docker pull vyansidiyora2000/frontend-image:latest
+          sudo docker run -d -p 3000:3000 vyansidiyora2000/frontend-image:latest
+
+  frontendSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: frontendSecurityGroup
+      GroupDescription: Allow SSH and port 3000 access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+  # Backend EC2 Instance
+  backendEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId:  ami-0453ec754f44f9a4a
+      InstanceType: t2.micro
+      KeyName: !Ref recipeKeyPair
+      SecurityGroupIds:
+        - !Ref backendSecurityGroup
+      Tags:
+        - Key: Name
+          Value: backend
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo yum update -y
+          sudo yum install -y docker
+          sudo systemctl start docker
+          sudo systemctl enable docker
+          sudo docker pull vyansidiyora2000/backend-image:latest
+          sudo docker run -d -p 5000:5000 vyansidiyora2000/backend-image:latest
+
+  backendSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: backendSecurityGroup
+      GroupDescription: Allow SSH and port 5000 access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5000
+          ToPort: 5000
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for RDS PostgreSQL
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 0.0.0.0/0
+
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: RecipeDB01
+      AllocatedStorage: 20
+      DBInstanceClass: db.t3.micro
+      Engine: postgres
+      EngineVersion: '17.2'
+      MasterUsername: postgres
+      MasterUserPassword: 12345678
+      VPCSecurityGroups:
+        - !GetAtt RDSSecurityGroup.GroupId
+      PubliclyAccessible: false
+      DBName: RecipeDatabase
+      BackupRetentionPeriod: 7
+
+Outputs:
+  KeyPairName:
+    Description: Name of the Key Pair
+    Value: !Ref recipeKeyPair
+
+  CognitoUserPoolId:
+    Description: ID of the Cognito User Pool
+    Value: !Ref CognitoUserPool
+
+  CognitoUserPoolDomain:
+    Description: Domain name for the Cognito User Pool
+    Value: !Ref CognitoUserPoolDomain
+
+  RDSEndpoint:
+    Description: Endpoint of the RDS Instance
+    Value: !GetAtt RDSInstance.Endpoint.Address

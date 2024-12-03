@@ -1,7 +1,37 @@
-import { Recipe } from "./types";
+import { Recipe } from "../types";
+
+
+const appUrl = import.meta.env.VITE_API_URL;
+
+
+// -------- User Data API --------
+
+// Send user data to API Gateway
+export const saveUserToDB = async (email: string, name: string, role: string, token: string) => {
+  const response = await fetch('https://68hmkcufeb.execute-api.us-east-1.amazonaws.com/test', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      email,
+      name,
+      role
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return await response.json();
+};
+
 
 export const searchRecipes = async (searchTerm: string, page: number) => {
-  const baseUrl = new URL("http://localhost:5000/api/recipes/search");
+  console.log(appUrl);
+  const baseUrl = new URL(`${appUrl}/api/recipes/search`);
   baseUrl.searchParams.append("searchTerm", searchTerm);
   baseUrl.searchParams.append("page", String(page));
 
@@ -14,7 +44,7 @@ export const searchRecipes = async (searchTerm: string, page: number) => {
 };
 
 export const getRecipeSummary = async (recipeId: string) => {
-  const url = new URL(`http://localhost:5000/api/recipes/${recipeId}/summary`);
+  const url = new URL(`${appUrl}/api/recipes/${recipeId}/summary`);
   const response = await fetch(url);
 
   if (!response.ok) {
@@ -25,7 +55,7 @@ export const getRecipeSummary = async (recipeId: string) => {
 };
 
 export const getFavouriteRecipes = async () => {
-  const url = new URL("http://localhost:5000/api/recipes/favourite");
+  const url = new URL(`${appUrl}/api/recipes/favourite`);
   const response = await fetch(url);
 
   if (!response.ok) {
@@ -36,7 +66,7 @@ export const getFavouriteRecipes = async () => {
 };
 
 export const addFavouriteRecipe = async (recipe: Recipe) => {
-  const url = new URL("http://localhost:5000/api/recipes/favourite");
+  const url = new URL(`${appUrl}/api/recipes/favourite`);
   const body = {
     recipeId: recipe.id,
   };
@@ -55,7 +85,7 @@ export const addFavouriteRecipe = async (recipe: Recipe) => {
 };
 
 export const removeFavouriteRecipe = async (recipe: Recipe) => {
-  const url = new URL("http://localhost:5000/api/recipes/favourite");
+  const url = new URL(`${appUrl}/api/recipes/favourite`);
   const body = {
     recipeId: recipe.id,
   };
@@ -72,3 +102,6 @@ export const removeFavouriteRecipe = async (recipe: Recipe) => {
     throw new Error(`HTTP error! Status: ${response.status}`);
   }
 };
+
+
+

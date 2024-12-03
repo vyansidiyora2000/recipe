@@ -4,7 +4,8 @@
   "description": "",
   "main": "./src/index.ts",
   "scripts": {
-    "start": "npx nodemon"
+    "start": "npx nodemon",
+    "migrate": "prisma migrate deploy"
   },
   "author": "",
   "license": "ISC",

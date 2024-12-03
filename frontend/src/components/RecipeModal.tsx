@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { RecipeSummary } from "../types";
-import * as RecipeAPI from "../api";
+import * as RecipeAPI from "../services/api";
 
 interface Props {
   recipeId: string;
